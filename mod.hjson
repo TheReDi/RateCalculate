@@ -1,0 +1,8 @@
+name: "rate-calculate"
+displayName: "Rate Calculate"
+author: "Lelushik"
+main: scripts/main.js
+description: "Rate Calculate allows you to select an area on the map and obtain useful information about the objects in it: the total speed of drills, the speed of resource consumption and creation in factories, the speed of energy production by generators, and so on."
+version: 0.1
+minGameVersion: 136
+hidden: true
