@@ -18,7 +18,8 @@ const keyDrillSpeed = KeyCode.c;
 const keyPressed = KeyCode.controlLeft;
 
 // Основная таблица
-const mainTable = new Table();
+var table = new Table();
+var mainTable = new Table();
 
 // Состояния
 var worldLoaded = false;
@@ -81,7 +82,7 @@ function updateStatistics() {
     
     // Статистика буров
     if (totalDrillStats.amount > 0) {
-        const drillTable = new Table();
+        var drillTable = new Table();
         drillTable.add("[accent]" + Core.bundle.get("rateCalculate.drills") + ":[]").row();
         drillTable.add(Core.bundle.get("rateCalculate.speed") + " : ").left();
         drillTable.add(Math.round(totalDrillStats.speed * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left().row();
@@ -93,7 +94,7 @@ function updateStatistics() {
     // Статистика энергии
     if (totalPowerStats.amount > 0) {
         mainTable.row();
-        const powerTable = new Table();
+        var powerTable = new Table();
         powerTable.add("[accent]" + Core.bundle.get("rateCalculate.energy") + ":[]").row();
         powerTable.add(Core.bundle.get("rateCalculate.production") + ": ").left();
         powerTable.add(Math.round(totalPowerStats.production * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left().row();
@@ -109,7 +110,7 @@ function updateStatistics() {
         mainTable.add("[accent]" + Core.bundle.get("rateCalculate.input") + ":[]").row();
         
         totalFactoriesInput.each((item, amount) => {
-            const rowTable = new Table();
+            var rowTable = new Table();
             rowTable.add(new Image(item.uiIcon)).size(24);
             rowTable.add(item + ": ").left();
             rowTable.add(Math.round(amount * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left();
@@ -124,7 +125,7 @@ function updateStatistics() {
         mainTable.add("[accent]" + Core.bundle.get("rateCalculate.output") + ":[]").row();
 
         totalFactoriesOutput.each((item, amount) => {
-            const rowTable = new Table();
+            var rowTable = new Table();
             let result = 0;
             let amountString = "";
             if (totalInOutPutStats.exceptions.containsKey(item)) {
@@ -140,7 +141,7 @@ function updateStatistics() {
         });
 
         totalInOutPutStats.exceptions.each((item, amount) => {
-            const rowTable = new Table();
+            var rowTable = new Table();
             rowTable.add(new Image(item.uiIcon)).size(24);
             rowTable.add(item + ": ").left();
             rowTable.add("~" + Math.round(amount * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left();
@@ -382,15 +383,20 @@ function getPowerProductionRate(build, block) {
 //
 
 function init() {
-    // Попытка удаления старой таблицы
-    try {
-        Vars.ui.hudGroup.removeChild(mainTable);
-    } catch (error) {
-        
-    }
+    Vars.ui.hudGroup.removeChild(table);
 
-    mainTable.bottom().left().margin(10);
-    Vars.ui.hudGroup.addChild(mainTable);
+    table = new Table();
+    table.bottom().left().margin(10);
+    Vars.ui.hudGroup.addChild(table);
+
+    let betweenTable = new Table();
+    betweenTable.margin(5);
+    betweenTable.background(Styles.black5);
+    table.add(betweenTable);
+
+    mainTable = new Table();
+    betweenTable.add(mainTable);
+
     worldLoaded = true; 
 }
 
