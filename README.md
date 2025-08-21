@@ -1,14 +1,24 @@
 # Rate Calculate
 
-My first mod for Mindustry. Please be kind!
+With this mod, you can select an area (default `C`) and calculate the following: drilling speed, factory production and consumption, pumping speed, and much more in the future!
 
-Calculates the speed of drills, production and consumption of factories in a specific area and much more.
-![](showcase/first.gif)
+Speed and efficiency of drills:
 
-Press C to create an area.
-![](showcase/third.gif)
+![](showcase/overview.gif)
 
-Hold Left Ctrl + C to create more than one are.
-![](showcase/second.gif)
+Input and Output of factories:
 
-Work in Progress! Not working on Erekir yet!
+![](showcase/factories.gif)
+
+Speed and efficiency of pumps:
+
+![](showcase/water.gif)
+
+You can also select more than one area at a time (default `LeftCtrl + C`)
+
+![](showcase/multiple-select.gif)
+
+
+***Work in Progress! Doesn't work properly on Erekir yet!***
+
+***This is also my first mod. Please be kind!***
