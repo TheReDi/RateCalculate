@@ -4,7 +4,7 @@ With this mod, you can select an area (default `C`) and calculate the following:
 
 Speed and efficiency of drills:
 
-![](showcase/overview.gif)
+![](showcase/review.gif)
 
 Input and Output of factories:
 
