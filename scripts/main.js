@@ -37,8 +37,8 @@ function updateStatistics() {
     mainTable.clearChildren();
     
     if (regions.length === 0) {
-        mainTable.add("[lightgray]Выделить область (C)[]").left().row();
-        mainTable.add("[lightgray]Выделить несколько областей (Ctrl+C)[]").left();
+        mainTable.add("[lightgray]" + Core.bundle.get("rateCalculate.select") + "[]").left().row();
+        mainTable.add("[lightgray]" + Core.bundle.get("rateCalculate.selectfew") + "[]").left();
         return;
     }
     
@@ -82,10 +82,10 @@ function updateStatistics() {
     // Статистика буров
     if (totalDrillStats.amount > 0) {
         const drillTable = new Table();
-        drillTable.add("[accent]Буры:[]").row();
-        drillTable.add("Скорость: ").left();
-        drillTable.add(Math.round(totalDrillStats.speed * 100) / 100 + "/сек").left().row();
-        drillTable.add("Эффективность: ").left();
+        drillTable.add("[accent]" + Core.bundle.get("rateCalculate.drills") + ":[]").row();
+        drillTable.add(Core.bundle.get("rateCalculate.speed") + " : ").left();
+        drillTable.add(Math.round(totalDrillStats.speed * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left().row();
+        drillTable.add(Core.bundle.get("rateCalculate.efficiency") + ": ").left();
         drillTable.add(Math.round(totalDrillStats.effTotal / totalDrillStats.amount * 1000) / 10 + "%").left().row();
         mainTable.add(drillTable).row();
     }
@@ -94,10 +94,10 @@ function updateStatistics() {
     if (totalPowerStats.amount > 0) {
         mainTable.row();
         const powerTable = new Table();
-        powerTable.add("[accent]Энергия:[]").row();
-        powerTable.add("Выработка: ").left();
-        powerTable.add(Math.round(totalPowerStats.production * 100) / 100 + "/сек").left().row();
-        powerTable.add("Эффективность: ").left();
+        powerTable.add("[accent]" + Core.bundle.get("rateCalculate.energy") + ":[]").row();
+        powerTable.add(Core.bundle.get("rateCalculate.production") + ": ").left();
+        powerTable.add(Math.round(totalPowerStats.production * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left().row();
+        powerTable.add(Core.bundle.get("rateCalculate.efficiency") + ": ").left();
         powerTable.add(Math.round(totalPowerStats.effTotal / totalPowerStats.amount * 1000) / 10 + "%").left().row();
         mainTable.add(powerTable).row();
     }
@@ -106,13 +106,13 @@ function updateStatistics() {
     let totalFactoriesInput = totalInOutPutStats.input;
     if (totalFactoriesInput.size > 0) {
         mainTable.row();
-        mainTable.add("[accent]Вход:[]").row();
+        mainTable.add("[accent]" + Core.bundle.get("rateCalculate.input") + ":[]").row();
         
         totalFactoriesInput.each((item, amount) => {
             const rowTable = new Table();
             rowTable.add(new Image(item.uiIcon)).size(24);
             rowTable.add(item + ": ").left();
-            rowTable.add(Math.round(amount * 100) / 100 + "/сек").left();
+            rowTable.add(Math.round(amount * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left();
             mainTable.add(rowTable).left().row();
         });
     }
@@ -121,7 +121,7 @@ function updateStatistics() {
     let totalFactoriesOutput = totalInOutPutStats.output;
     if (totalFactoriesOutput.size > 0 || totalInOutPutStats.exceptions.size > 0) {
         mainTable.row();
-        mainTable.add("[accent]Выход:[]").row();
+        mainTable.add("[accent]" + Core.bundle.get("rateCalculate.output") + ":[]").row();
 
         totalFactoriesOutput.each((item, amount) => {
             const rowTable = new Table();
@@ -134,7 +134,7 @@ function updateStatistics() {
             }
             rowTable.add(new Image(item.uiIcon)).size(24);
             rowTable.add(item + ": ").left();
-            amountString += Math.round((amount + result) * 100) / 100 + "/сек";
+            amountString += Math.round((amount + result) * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec");
             rowTable.add(amountString).left();
             mainTable.add(rowTable).left().row();
         });
@@ -143,7 +143,7 @@ function updateStatistics() {
             const rowTable = new Table();
             rowTable.add(new Image(item.uiIcon)).size(24);
             rowTable.add(item + ": ").left();
-            rowTable.add("~" + Math.round(amount * 100) / 100 + "/сек").left();
+            rowTable.add("~" + Math.round(amount * 100) / 100 + "/" + Core.bundle.get("rateCalculate.sec")).left();
             mainTable.add(rowTable).left().row();
         });
     }
@@ -151,7 +151,7 @@ function updateStatistics() {
     // Общая эффективность фабрик
     if (totalFactoriesInput.size > 0 || totalFactoriesOutput.size > 0) {
         mainTable.row();
-        mainTable.add("[accent]Общая эффективность фабрик: []");
+        mainTable.add("[accent]" + Core.bundle.get("rateCalculate.overall") + ": []");
         mainTable.add(Math.round(totalInOutPutStats.effTotal / totalInOutPutStats.amount * 1000) / 10 + "%").left().row();
     }
 }
@@ -324,7 +324,7 @@ function getInOutPutStatsForRegion(region) {
                     }
 
                     for (let item of block.results) {
-                        exceptions.put(item.item, (item.amount / totalAmount) / block.craftTime * 60 * build.timeScale() + output.get(item.item, 0));
+                        exceptions.put(item.item, (item.amount / totalAmount) / block.craftTime * 60 * build.timeScale() + exceptions.get(item.item, 0));
                     }
                 }
             }
