@@ -1,8 +1,4 @@
-// Клавиши
-var keyDrillSpeed = KeyCode.c;
-var keyPressed = KeyCode.controlLeft;
-
-// Исключения
+// Константы
 const drillTypes = [
     Blocks.mechanicalDrill,
     Blocks.pneumaticDrill,
@@ -11,22 +7,397 @@ const drillTypes = [
     Blocks.eruptionDrill,
     Blocks.impactDrill,
 ];
-// TODO доработать
-const siliconCrucible = Blocks.siliconCrucible;
+const exceptionResults = [Blocks.separator, Blocks.disassembler];
+const exceptionMultipliers = [Blocks.siliconCrucible, Blocks.cultivator];
+const waterExtractor = Blocks.waterExtractor;
+const oilExtractor = Blocks.oilExtractor;
+const oil = Liquids.oil;
 
-// Состояние
-var dragging = false;
-var pressed = false;
-var startX = 0, startY = 0, endX = 0, endY = 0;
-var regions = [];
+// Клавиши
+const keyDrillSpeed = KeyCode.c;
+const keyPressed = KeyCode.controlLeft;
+
+// Основная таблица
 const mainTable = new Table();
 
-Events.on(ClientLoadEvent, function(){
+// Состояния
+var worldLoaded = false;
+var dragging = false;
+var startX = 0, startY = 0, endX = 0, endY = 0;
+// var prevEndX = -1, prevEndY = -1; // Для оптимизации памяти
+var regions = []; // Массив для хранения всех областей
+
+// Основные ивенты
+Events.on(WorldLoadEvent, init);
+Events.run(Trigger.draw, drawer);
+Events.run(Trigger.update, update);
+
+
+function updateStatistics() {
+    mainTable.clearChildren();
+    
+    if (regions.length === 0) {
+        mainTable.add("[lightgray]Выделить область (C)[]").left().row();
+        mainTable.add("[lightgray]Выделить несколько областей (Ctrl+C)[]").left();
+        return;
+    }
+    
+    // Суммарная статистика по всем областям
+    var totalDrillStats = {speed: 0, effTotal: 0, amount: 0};
+    var totalInOutPutStats = {input: new ObjectMap(), output: new ObjectMap(), exceptions: new ObjectMap(), effTotal: 0, amount: 0};
+    var totalPowerStats = {production: 0, effTotal: 0, amount: 0}
+    
+    // TODO убрать повторы зданий по ID
+    // TODO оптимизировать сбор зданий в одной функции
+    // Собираем данные со всех областей
+    for (let region of regions) {
+        var drillStats = getDrillStatsForRegion(region);
+        var inOutPutStats = getInOutPutStatsForRegion(region);
+        var powerStats = getPowerStatsForRegion(region);
+
+        // Суммируем буры
+        totalDrillStats.speed += drillStats.speed;
+        totalDrillStats.effTotal += drillStats.effTotal;
+        totalDrillStats.amount += drillStats.amount;
+        
+        // Суммируем Input и Output
+        inOutPutStats.input.each((item, amount) => {
+            totalInOutPutStats.input.put(item, totalInOutPutStats.input.get(item, 0) + amount);
+        });
+        inOutPutStats.output.each((item, amount) => {
+            totalInOutPutStats.output.put(item, totalInOutPutStats.output.get(item, 0) + amount);
+        });
+        inOutPutStats.exceptions.each((item, amount) => {
+            totalInOutPutStats.exceptions.put(item, totalInOutPutStats.exceptions.get(item, 0) + amount);
+        });
+        totalInOutPutStats.effTotal += inOutPutStats.effTotal;
+        totalInOutPutStats.amount += inOutPutStats.amount;
+        
+        // Суммируем энергию
+        totalPowerStats.production = powerStats.production;
+        totalPowerStats.effTotal = powerStats.effTotal;
+        totalPowerStats.amount = powerStats.amount;
+    };
+    
+    // Статистика буров
+    if (totalDrillStats.amount > 0) {
+        const drillTable = new Table();
+        drillTable.add("[accent]Буры:[]").row();
+        drillTable.add("Скорость: ").left();
+        drillTable.add(Math.round(totalDrillStats.speed * 100) / 100 + "/сек").left().row();
+        drillTable.add("Эффективность: ").left();
+        drillTable.add(Math.round(totalDrillStats.effTotal / totalDrillStats.amount * 1000) / 10 + "%").left().row();
+        mainTable.add(drillTable).row();
+    }
+    
+    // Статистика энергии
+    if (totalPowerStats.amount > 0) {
+        mainTable.row();
+        const powerTable = new Table();
+        powerTable.add("[accent]Энергия:[]").row();
+        powerTable.add("Выработка: ").left();
+        powerTable.add(Math.round(totalPowerStats.production * 100) / 100 + "/сек").left().row();
+        powerTable.add("Эффективность: ").left();
+        powerTable.add(Math.round(totalPowerStats.effTotal / totalPowerStats.amount * 1000) / 10 + "%").left().row();
+        mainTable.add(powerTable).row();
+    }
+    
+    // Статистика фабрик (вход)
+    let totalFactoriesInput = totalInOutPutStats.input;
+    if (totalFactoriesInput.size > 0) {
+        mainTable.row();
+        mainTable.add("[accent]Вход:[]").row();
+        
+        totalFactoriesInput.each((item, amount) => {
+            const rowTable = new Table();
+            rowTable.add(new Image(item.uiIcon)).size(24);
+            rowTable.add(item + ": ").left();
+            rowTable.add(Math.round(amount * 100) / 100 + "/сек").left();
+            mainTable.add(rowTable).left().row();
+        });
+    }
+    
+    // Статистика фабрик (выход)
+    let totalFactoriesOutput = totalInOutPutStats.output;
+    if (totalFactoriesOutput.size > 0 || totalInOutPutStats.exceptions.size > 0) {
+        mainTable.row();
+        mainTable.add("[accent]Выход:[]").row();
+
+        totalFactoriesOutput.each((item, amount) => {
+            const rowTable = new Table();
+            let result = 0;
+            let amountString = "";
+            if (totalInOutPutStats.exceptions.containsKey(item)) {
+                amountString = "~";
+                result += totalInOutPutStats.exceptions.get(item);
+                totalInOutPutStats.exceptions.remove(item);
+            }
+            rowTable.add(new Image(item.uiIcon)).size(24);
+            rowTable.add(item + ": ").left();
+            amountString += Math.round((amount + result) * 100) / 100 + "/сек";
+            rowTable.add(amountString).left();
+            mainTable.add(rowTable).left().row();
+        });
+
+        totalInOutPutStats.exceptions.each((item, amount) => {
+            const rowTable = new Table();
+            rowTable.add(new Image(item.uiIcon)).size(24);
+            rowTable.add(item + ": ").left();
+            rowTable.add("~" + Math.round(amount * 100) / 100 + "/сек").left();
+            mainTable.add(rowTable).left().row();
+        });
+    }
+
+    // Общая эффективность фабрик
+    if (totalFactoriesInput.size > 0 || totalFactoriesOutput.size > 0) {
+        mainTable.row();
+        mainTable.add("[accent]Общая эффективность фабрик: []");
+        mainTable.add(Math.round(totalInOutPutStats.effTotal / totalInOutPutStats.amount * 1000) / 10 + "%").left().row();
+    }
+}
+
+//
+// Функции для работы с отдельными областями
+//
+
+function getDrillStatsForRegion(region) {
+    let minx = Math.min(region.startX, region.endX);
+    let miny = Math.min(region.startY, region.endY);
+    let maxx = Math.max(region.startX, region.endX);
+    let maxy = Math.max(region.startY, region.endY);
+
+    let speed = 0;
+    let amount = 0;
+    let effTotal = 0;
+    let IDs = [];
+    
+    for(let x = minx; x <= maxx; x++){
+        for(let y = miny; y <= maxy; y++){
+            let build = Vars.world.build(x, y);
+            if(build == null || build.block == null) continue;
+            
+            if(drillTypes.includes(build.block)){
+                if (IDs.includes(build.id)) continue;
+                IDs.push(build.id);
+                
+                speed += getDrillRate(build, build.block);
+                amount++;
+                effTotal += build.efficiency;
+            }
+        }
+    }
+    return {speed: speed, effTotal: effTotal, amount: amount};
+}
+
+function getDrillRate(build, block) {
+    let drillingItem = build.dominantItem;
+    let drillingItems = build.dominantItems;
+    let baseDrillTime = block.getDrillTime(drillingItem);
+
+    let liquidBoost = 1;
+    // let groundMultiplier = 1;
+
+    // Жидкостной буст
+    if(block.hasLiquids && build.liquids.currentAmount() >= 0.001) {
+        liquidBoost *= block.liquidBoostIntensity * block.liquidBoostIntensity;
+    }
+
+    // // Бонус от типа земли (для новых буров)
+    // if (drill.block.attributes && drill.block.attributes.containsKey(Attribute.heat)) {
+    //     groundMultiplier = tile.getAttributes().get(Attribute.heat) * drill.block.attributes.get(Attribute.heat) + 1;
+    // }
+
+    return (60 / baseDrillTime * liquidBoost * build.timeScale() * drillingItems);
+}
+
+function getInOutPutStatsForRegion(region) {
+    let minx = Math.min(region.startX, region.endX);
+    let miny = Math.min(region.startY, region.endY);
+    let maxx = Math.max(region.startX, region.endX);
+    let maxy = Math.max(region.startY, region.endY);
+
+    let input = new ObjectMap();
+    let output = new ObjectMap();
+    let exceptions = new ObjectMap();
+    let IDs = [];
+
+    let amount = 0;
+    let effTotal = 0;
+
+    for(let x = minx; x <= maxx; x++){
+        for(let y = miny; y <= maxy; y++){
+            let build = Vars.world.build(x, y);
+            if (!build || !build.block) continue;
+            let block = build.block;
+
+            if (block == waterExtractor) {
+                if (IDs.includes(build.id)) continue;
+
+                IDs.push(build.id);
+                amount++;
+                effTotal += build.efficiency;
+
+                let exceptionMultiplier = 1 + build.boost;
+
+                let liquidDrop = build.liquidDrop;
+                output.put(liquidDrop, block.pumpAmount * 60 * build.timeScale() * exceptionMultiplier + output.get(liquidDrop, 0));
+            }
+            if (block == oilExtractor) {
+                if (IDs.includes(build.id)) continue;
+
+                IDs.push(build.id);
+                amount++;
+                effTotal += build.efficiency;
+
+                let exceptionMultiplier = build.boost;
+
+                if (block.consumers && block.consumers.length > 0) {
+                    for (let consumer of block.consumers) {
+                        if (consumer instanceof ConsumeItems) {
+                            for (let item of consumer.items) {
+                                input.put(item.item, block.itemUseTime / 60 * build.timeScale() * exceptionMultiplier + input.get(item.item, 0));
+                            }
+                        }
+                        if (consumer instanceof ConsumeLiquid) {
+                            input.put(consumer.liquid, consumer.amount * 60 * build.timeScale() * exceptionMultiplier + input.get(consumer.liquid, 0));
+                        }
+                    }
+                }
+
+                let liquidDrop = oil;
+                output.put(liquidDrop, block.pumpAmount * 60 * build.timeScale() * exceptionMultiplier + output.get(liquidDrop, 0));
+            } else if (block.pumpAmount) {
+                if (IDs.includes(build.id)) continue;
+
+                IDs.push(build.id);
+                amount++;
+                effTotal += build.efficiency;
+
+                let liquidDrop = build.liquidDrop;
+                let amountLiquids = 0;
+
+                if (liquidDrop == null) continue;
+                let tempTiles = new Seq();
+                Vars.world.tile(build.tileX(), build.tileY()).getLinkedTiles(tempTiles).each(other => {
+                    if (other.floor().liquidDrop == liquidDrop && other.floor().liquidMultiplier != null)
+                        amountLiquids += other.floor().liquidMultiplier;
+                });
+
+                output.put(liquidDrop, amountLiquids * block.pumpAmount * 60 * build.timeScale() + output.get(liquidDrop, 0));
+            }
+
+            if (block.craftTime) {
+                if (IDs.includes(build.id)) continue;
+
+                IDs.push(build.id);
+                amount++;
+                effTotal += build.efficiency;
+
+                let exceptionMultiplier = 1;
+                if (exceptionMultipliers.includes(block))
+                    exceptionMultiplier = build.efficiencyMultiplier();
+
+                if (block.consumers && block.consumers.length > 0) {
+                    for (let consumer of block.consumers) {
+                        if (consumer instanceof ConsumeItems) {
+                            for (let item of consumer.items) {
+                                input.put(item.item, item.amount / block.craftTime * 60 * build.timeScale() * exceptionMultiplier + input.get(item.item, 0));
+                            }
+                        }
+                        if (consumer instanceof ConsumeLiquid) {
+                            input.put(consumer.liquid, consumer.amount * 60 * build.timeScale() * exceptionMultiplier + input.get(consumer.liquid, 0));
+                        }
+                    }
+                }
+
+                if (block.outputItem) {
+                    output.put(block.outputItem.item, block.outputItem.amount / block.craftTime * 60 * build.timeScale() * exceptionMultiplier + output.get(block.outputItem.item, 0));
+                }
+                if (block.outputLiquid) {
+                    output.put(block.outputLiquid.liquid, block.outputLiquid.amount * 60 * build.timeScale() * exceptionMultiplier + output.get(block.outputLiquid.liquid, 0));
+                }
+
+                if (exceptionResults.includes(block) && block.results != null) {
+                    let totalAmount = 0;
+                    for (let item of block.results) {
+                        totalAmount += item.amount;
+                    }
+
+                    for (let item of block.results) {
+                        exceptions.put(item.item, (item.amount / totalAmount) / block.craftTime * 60 * build.timeScale() + output.get(item.item, 0));
+                    }
+                }
+            }
+        }
+    }
+
+    return {input: input, output: output, exceptions: exceptions, effTotal: effTotal, amount: amount};
+}
+
+function getPowerStatsForRegion(region) {
+    let minx = Math.min(region.startX, region.endX);
+    let miny = Math.min(region.startY, region.endY);
+    let maxx = Math.max(region.startX, region.endX);
+    let maxy = Math.max(region.startY, region.endY);
+
+    let totalPower = 0;
+    let amount = 0;
+    let effTotal = 0;
+    let IDs = []
+
+    for(let x = minx; x <= maxx; x++){
+        for(let y = miny; y <= maxy; y++){
+            let build = Vars.world.build(x, y);
+            if (!build || !build.block) continue;
+            let block = build.block;
+
+            if (!block.powerProduction) continue;
+
+            if (IDs.includes(build.id)) continue;
+
+            IDs.push(build.id);
+            totalPower += getPowerProductionRate(build, block);
+            amount++;
+            effTotal += build.efficiency;
+        }
+    }
+
+    return {production: totalPower, effTotal: effTotal, amount: amount};
+}
+
+function getPowerProductionRate(build, block) {
+    let production = build.getPowerProduction() || block.powerProduction;
+    
+    let usagePower = block.consPower;
+    if (usagePower != null) usagePower = usagePower.usage;
+    else usagePower = 0;
+    
+    production = (production - usagePower) * 60 * build.timeScale();
+    
+    return production;
+}
+
+//
+// Основные функции: Инициализация, Отрисовка рамки, Update - InputHandler
+//
+
+function init() {
+    // Попытка удаления старой таблицы
+    try {
+        Vars.ui.hudGroup.removeChild(mainTable);
+    } catch (error) {
+        
+    }
+
     mainTable.bottom().left().margin(10);
     Vars.ui.hudGroup.addChild(mainTable);
-});
+    worldLoaded = true; 
+}
 
-Events.run(Trigger.draw, function(){
+function drawer() {
+    if (!worldLoaded) return;
+
+    // Отрисовка текущей области (если есть)
     if (dragging) {
         let wx1 = Math.min(startX, endX) * Vars.tilesize;
         let wy1 = Math.min(startY, endY) * Vars.tilesize;
@@ -41,7 +412,8 @@ Events.run(Trigger.draw, function(){
         Draw.reset();
     }
 
-    regions.forEach((region, index) => {
+    // Отрисовка всех сохраненных областей
+    for (let region of regions) {
         let wx1 = Math.min(region.startX, region.endX) * Vars.tilesize;
         let wy1 = Math.min(region.startY, region.endY) * Vars.tilesize;
         let wx2 = (Math.max(region.startX, region.endX) + 1) * Vars.tilesize;
@@ -53,25 +425,30 @@ Events.run(Trigger.draw, function(){
         Draw.color(Pal.items, 0.1);
         Fill.rect((wx1+wx2)/2 - Vars.tilesize/2, (wy1+wy2)/2 - Vars.tilesize/2, wx2-wx1, wy2-wy1);
         Draw.reset();
-    });
-});
+    };
+}
 
-Events.run(Trigger.update, function(){
+//TODO: оптимизировать поток
+function update() {
+    if (!worldLoaded) return;
+
     const ctrlPressed = Core.input.keyDown(keyPressed);
     
     if (Core.input.keyTap(keyDrillSpeed)) {
-        // Начало новой области
         startX = World.toTile(Core.input.mouseWorldX());
         startY = World.toTile(Core.input.mouseWorldY());
+        // endX = -1;
+        // endY = -1;
         dragging = true;
     }
     
     if (dragging) {
+        // prevEndX = endX;
+        // prevEndY = endY;
         endX = World.toTile(Core.input.mouseWorldX());
         endY = World.toTile(Core.input.mouseWorldY());
         
         if (ctrlPressed) {
-            // Добавляем область в список
             if (!Core.input.keyDown(keyDrillSpeed)) {
                 regions.push({
                     startX: startX,
@@ -94,173 +471,12 @@ Events.run(Trigger.update, function(){
         }
     }
 
+    // if (prevEndX !== endX || prevEndY !== endY)
+    //     updateStatistics();
+
     updateStatistics();
 
-    if (!ctrlPressed) regions = [];
-});
-
-function updateStatistics() {
-    mainTable.clearChildren();
-    
-    if (regions.length === 0) {
-        mainTable.add("[lightgray]Select area (C)[]").left().row();
-        mainTable.add("[lightgray]Select more areas (Ctrl+C)[]").left();
-        return;
+    if (!ctrlPressed) {
+        regions = [];
     }
-    
-    // Суммарная статистика по всем областям
-    let totalDrillStats = { sum: 0, effTotal: 0, amount: 0 };
-    let totalFactoriesInput = new ObjectMap();
-    let totalFactoriesOutput = new ObjectMap();
-    
-    // Собираем данные со всех областей
-    regions.forEach((region, index) => {
-        const drillStats = getDrillStatsForRegion(region);
-        const factoryStats = getFactoriesStatsForRegion(region);
-        
-        // Суммируем буры
-        totalDrillStats.sum += drillStats.sum;
-        totalDrillStats.effTotal += drillStats.effTotal;
-        totalDrillStats.amount += drillStats.amount;
-        
-        // Суммируем фабрики (вход)
-        factoryStats.factoriesInput.each((item, amount) => {
-            totalFactoriesInput.put(item, totalFactoriesInput.get(item, 0) + amount);
-        });
-        
-        // Суммируем фабрики (выход)
-        factoryStats.factoriesOutput.each((item, amount) => {
-            totalFactoriesOutput.put(item, totalFactoriesOutput.get(item, 0) + amount);
-        });
-    });
-    
-    // Статистика буров
-    const drillTable = new Table();
-    drillTable.add("[accent]Drills:[]").row();
-    drillTable.add("Speed: ").left();
-    drillTable.add(Math.round(totalDrillStats.sum * 100) / 100 + "/sec").left().row();
-    drillTable.add("Efficiency: ").left();
-    drillTable.add(Math.round(totalDrillStats.effTotal / totalDrillStats.amount * 1000) / 10 + "%").left().row();
-    mainTable.add(drillTable).row();
-    
-    // Статистика фабрик (вход)
-    if (totalFactoriesInput.size > 0) {
-        mainTable.row();
-        mainTable.add("[accent]Input:[]").row();
-        
-        totalFactoriesInput.each((input, amount) => {
-            const rowTable = new Table();
-            rowTable.add(new Image(input.uiIcon)).size(24);
-            rowTable.add(input.localizedName + ": ").left();
-            rowTable.add(Math.round(amount * 100) / 100 + "/sec").left();
-            mainTable.add(rowTable).left().row();
-        });
-    }
-    
-    // Статистика фабрик (выход)
-    if (totalFactoriesOutput.size > 0) {
-        mainTable.row();
-        mainTable.add("[accent]Output:[]").row();
-        
-        totalFactoriesOutput.each((output, amount) => {
-            const rowTable = new Table();
-            rowTable.add(new Image(output.uiIcon)).size(24);
-            rowTable.add(output.localizedName + ": ").left();
-            rowTable.add(Math.round(amount * 100) / 100 + "/sec").left();
-            mainTable.add(rowTable).left().row();
-        });
-    }
-}
-
-// Функции для работы с отдельными областями
-function getDrillStatsForRegion(region) {
-    let minx = Math.min(region.startX, region.endX);
-    let miny = Math.min(region.startY, region.endY);
-    let maxx = Math.max(region.startX, region.endX);
-    let maxy = Math.max(region.startY, region.endY);
-
-    let sum = 0;
-    let amount = 0;
-    let effTotal = 0;
-
-    for(let x = minx; x <= maxx; x++){
-        for(let y = miny; y <= maxy; y++){
-            let tile = Vars.world.tile(x, y);
-            if(tile == null || tile.build == null) continue;
-
-            let build = tile.build;
-            if(build.block && drillTypes.includes(build.block)){
-                if (tile.build.dominantItem == tile.drop())
-                    sum += getDrillRate(build);
-                amount++;
-                effTotal += build.efficiency;
-            }
-        }
-    }
-
-    return {sum: sum, effTotal: effTotal, amount: amount};
-}
-
-function getFactoriesStatsForRegion(region) {
-    let minx = Math.min(region.startX, region.endX);
-    let miny = Math.min(region.startY, region.endY);
-    let maxx = Math.max(region.startX, region.endX);
-    let maxy = Math.max(region.startY, region.endY);
-
-    let factoriesInput = new ObjectMap();
-    let factoriesOutput = new ObjectMap();
-    let IDs = [];
-
-    for(let x = minx; x <= maxx; x++){
-        for(let y = miny; y <= maxy; y++){
-            let build = Vars.world.build(x, y);
-            if (!build) continue;
-
-            let block = build.block;
-            if (!block || !block.craftTime) continue;
-
-            if (!IDs.includes(build.id)) {
-                IDs.push(build.id);
-
-                // Input
-                if (block.consumers && block.consumers.length > 0) {
-                    for (let consumer of block.consumers) {
-                        if (consumer instanceof ConsumeItems) {
-                            for (let item of consumer.items) {
-                                factoriesInput.put(item.item, item.amount / block.craftTime * 60 * build.timeScale() + factoriesInput.get(item.item, 0));
-                            }
-                        }
-                        if (consumer instanceof ConsumeLiquid) {
-                            factoriesInput.put(consumer.liquid, consumer.amount * 60 * build.timeScale() + factoriesInput.get(consumer.liquid, 0));
-                        }
-                    }
-                }
-
-                // Output
-                if (block.outputItem) {
-                    factoriesOutput.put(block.outputItem.item, block.outputItem.amount / block.craftTime * 60 * build.timeScale() + factoriesOutput.get(block.outputItem.item, 0));
-                }
-                if (block.outputLiquid) {
-                    factoriesOutput.put(block.outputLiquid.liquid, block.outputLiquid.amount * 60 * build.timeScale() + factoriesOutput.get(block.outputLiquid.liquid, 0));
-                }
-            }
-        }
-    }
-
-    return {factoriesInput: factoriesInput, factoriesOutput: factoriesOutput};
-}
-
-function getDrillRate(drill) {
-    const drillingItem = drill.dominantItem;
-
-    const baseDrillTime = drill.block.getDrillTime(drillingItem);
-    if(baseDrillTime <= 0) return 0;
-
-    let liquidBoost = 1;
-
-    if(drill.block.hasLiquids && drill.liquids.currentAmount() >= 0.001) {
-        liquidBoost *= drill.block.liquidBoostIntensity * drill.block.liquidBoostIntensity;
-    }
-
-    return (60 / baseDrillTime * liquidBoost * drill.timeScale());
 }
